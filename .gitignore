@@ -1,0 +1,7 @@
+*~
+*.pyc
+junk*
+src/build/
+src/dist/
+.DS_Store
+*.egg-info/

@@ -8,3 +8,9 @@ Expanded from Jan Hendrik Metzen's kernel_regression package.  Major code redund
 - Improved numerical convergence of fit values far from training points
 - Allows validation on "parallel sample" rather than cross-validation, which is
   useful when some points would be dominated by own kernel
+
+Example of locally linear regression advantages in 1 and 2-d:
+
+![onecompare](onedcompare.png)
+
+![twodcompare](twodcompare.png)

@@ -9,6 +9,8 @@ Expanded from Jan Hendrik Metzen's kernel_regression package.  Major code redund
 - Allows validation on "parallel sample" rather than cross-validation, which is
   useful when some points would be dominated by own kernel
 
+Note: the code is fairly rough, untested, and poorly documented, but is made public since I couldn't find any equivalent functionality elsewhere.  Feel free to contact me with improvements.
+
 Example of locally linear regression advantages in 1 and 2-d:
 
 ![onecompare](onedcompare.png)

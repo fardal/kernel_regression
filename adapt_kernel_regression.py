@@ -9,6 +9,7 @@ import numpy as np
 # from sklearn.metrics.pairwise import pairwise_kernels
 from pairwise import pairwise_kernels
 from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.neighbors import NearestNeighbors
 
 
 class KernelRegression(BaseEstimator, RegressorMixin):
@@ -18,6 +19,8 @@ class KernelRegression(BaseEstimator, RegressorMixin):
     bandwith selection of the kernel via leave-one-out cross-validation. Kernel
     regression is a simple non-parametric kernelized technique for learning
     a non-linear relationship between input variable(s) and a target variable.
+
+    ALTERING FOR ADAPTIVE SMOOTHING
 
     Parameters
     ----------
@@ -33,6 +36,9 @@ class KernelRegression(BaseEstimator, RegressorMixin):
         sklearn.metrics.pairwise. Ignored by other kernels. If a sequence of
         values is given, one of these values is selected which minimizes
         the mean-squared-error of leave-one-out cross-validation.
+        These are scaled by power of k-nearest-neighbor distance.
+    n_neighbors : int
+        number of neighbors to use in computing individual point smoothing lengths
 
     See also
     --------
@@ -40,9 +46,10 @@ class KernelRegression(BaseEstimator, RegressorMixin):
     sklearn.metrics.pairwise.kernel_metrics : List of built-in kernels.
     """
 
-    def __init__(self, kernel="rbf", gamma=None):
+    def __init__(self, kernel="rbf", gamma=None, n_neighbors=16):
         self.kernel = kernel
         self.gamma = gamma
+        self.n_neighbors = n_neighbors
 
     def fit(self, X, y, indX=None, pary=None, plotcv=False):
         """Fit the model
@@ -70,6 +77,12 @@ class KernelRegression(BaseEstimator, RegressorMixin):
         self.X = X
         self.y = y
 
+        nbrs = NearestNeighbors(n_neighbors=self.n_neighbors).fit(X)
+        dneighb, ineighb = nbrs.kneighbors(X)
+        dkn = dneighb[:,-1]
+        # self.ptscale = 1.0 / dkn**2  #constant neighbor number
+        self.ptscale = 1.0 / dkn  # from silverman 1-d discussion, unsure about n-d though
+
         if hasattr(self.gamma, "__iter__"):
             gamma_in = self.gamma
             if (pary is not None):
@@ -85,7 +98,6 @@ class KernelRegression(BaseEstimator, RegressorMixin):
                 print 'Chosen gamma at extreme of input choices:'
                 print self.gamma
                 print gamma_in.min(), gamma_in.max()
-
         return self
 
     def predict(self, X):
@@ -103,7 +115,8 @@ class KernelRegression(BaseEstimator, RegressorMixin):
         """
         K = pairwise_kernels(self.X, X,
                              metric=self.kernel,
-                             gamma=self.gamma)
+                             gamma=self.gamma * self.ptscale,
+                             norm=True)
         K = K - K.max(axis=0)[np.newaxis, :]  # only relative values along 0 axis matter
         np.exp(K, K)
         return ysmooth(self.y, K)
@@ -114,20 +127,20 @@ class KernelRegression(BaseEstimator, RegressorMixin):
         mse = np.empty_like(gamma_values, dtype=np.float)
         for i, gamma in enumerate(gamma_values):
             K = pairwise_kernels(self.X, self.X, metric=self.kernel,
-                                 gamma=gamma)
+                                 gamma=gamma * self.ptscale,
+                                 norm=True)
             np.fill_diagonal(K, -np.inf)  # leave-one-out - exponentiates to zero
             K = K - K.max(axis=0)[np.newaxis, :]  # only relative values along 0 axis matter
             np.exp(K, K)
             y_pred = ysmooth(self.y, K)
             mse[i] = ((y_pred - self.y) ** 2).mean()
-
+        self.mse = np.nanmin(mse)
         if (plot):
             import matplotlib.pyplot as plt
             plt.semilogx(gamma_values, mse, 'bd-')
             plt.plot(gamma_values, gamma_values*0, 'kd')
             plt.plot(gamma_values[np.nanargmin(mse)], mse[np.nanargmin(mse)], 'rs')
             plt.show()
-        self.mse = np.nanmin(mse)
 
         return gamma_values[np.nanargmin(mse)]
 
@@ -137,7 +150,8 @@ class KernelRegression(BaseEstimator, RegressorMixin):
         mse = np.empty_like(gamma_values, dtype=np.float)
         for i, gamma in enumerate(gamma_values):
             K = pairwise_kernels(self.X, parX, metric=self.kernel,
-                                 gamma=gamma)
+                                 gamma=gamma * self.ptscale,
+                                 norm=True)
             K = K - K.max(axis=0)[np.newaxis, :]  # only relative values along 0 axis matter
             np.exp(K, K)
             y_pred = ysmooth(self.y, K)

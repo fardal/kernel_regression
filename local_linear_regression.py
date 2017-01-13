@@ -1,6 +1,6 @@
 """The :mod:`sklearn.kernel_regressor` module implements the Kernel Regressor.
 """
-# Author: Jan Hendrik Metzen <janmetzen@mailbox.de>
+# Author: Mark Fardal, based on kernel_regression by Jan Hendrik Metzen
 #
 # License: BSD 3 clause
 
@@ -12,11 +12,11 @@ from sklearn.base import BaseEstimator, RegressorMixin
 
 
 class KernelRegression(BaseEstimator, RegressorMixin):
-    """Nadaraya-Watson kernel regression with automatic bandwidth selection.
+    """Locally linear kernel regression with automatic bandwidth selection.
 
-    This implements Nadaraya-Watson kernel regression with (optional) automatic
-    bandwith selection of the kernel via leave-one-out cross-validation. Kernel
-    regression is a simple non-parametric kernelized technique for learning
+    This implements locally linear kernel regression with (optional) automatic
+    bandwith selection of the kernel via leave-one-out cross-validation. Locally
+    linear regression is a simple non-parametric kernelized technique for learning
     a non-linear relationship between input variable(s) and a target variable.
 
     Parameters
@@ -40,9 +40,13 @@ class KernelRegression(BaseEstimator, RegressorMixin):
     sklearn.metrics.pairwise.kernel_metrics : List of built-in kernels.
     """
 
-    def __init__(self, kernel="rbf", gamma=None):
+    def __init__(self, kernel="rbf", gamma=None, onedmethod=False):
         self.kernel = kernel
         self.gamma = gamma
+        if onedmethod:
+            self.ysmooth = ysmooth_1d
+        else:
+            self.ysmooth = ysmooth
 
     def fit(self, X, y, indX=None, pary=None, plotcv=False):
         """Fit the model
@@ -61,7 +65,7 @@ class KernelRegression(BaseEstimator, RegressorMixin):
 
         indX (optional): if provided, pary should be independent sample
           evaluated at X[indX,:]
-
+           
         Returns
         -------
         self : object
@@ -77,7 +81,7 @@ class KernelRegression(BaseEstimator, RegressorMixin):
                     parX = X[indX,:]
                 else:
                     parX = X
-                self.gamma = self._optimize_gamma_pv(self.gamma, pary, parX,
+                self.gamma = self._optimize_gamma_pv(self.gamma, pary, parX, 
                                                      plot=plotcv)
             else:
                 self.gamma = self._optimize_gamma(self.gamma, plot=plotcv)
@@ -85,7 +89,7 @@ class KernelRegression(BaseEstimator, RegressorMixin):
                 print 'Chosen gamma at extreme of input choices:'
                 print self.gamma
                 print gamma_in.min(), gamma_in.max()
-
+            
         return self
 
     def predict(self, X):
@@ -104,9 +108,12 @@ class KernelRegression(BaseEstimator, RegressorMixin):
         K = pairwise_kernels(self.X, X,
                              metric=self.kernel,
                              gamma=self.gamma)
-        K = K - K.max(axis=0)[np.newaxis, :]  # only relative values along 0 axis matter
+        K = K - K.max(axis=0)[np.newaxis, :]  #only relative values along 0 axis matter
         np.exp(K, K)
-        return ysmooth(self.y, K)
+        # this is the Nadaraya-Watson estimate
+        # return ysmooth(self.y, K)
+        # this is the locally linear estimate
+        return self.ysmooth(self.y, self.X, X, K)
 
     def _optimize_gamma(self, gamma_values, plot=False):
         # Select specific value of gamma from the range of given gamma_values
@@ -116,11 +123,11 @@ class KernelRegression(BaseEstimator, RegressorMixin):
             K = pairwise_kernels(self.X, self.X, metric=self.kernel,
                                  gamma=gamma)
             np.fill_diagonal(K, -np.inf)  # leave-one-out - exponentiates to zero
-            K = K - K.max(axis=0)[np.newaxis, :]  # only relative values along 0 axis matter
+            K = K - K.max(axis=0)[np.newaxis, :]  #only relative values along 0 axis matter
             np.exp(K, K)
-            y_pred = ysmooth(self.y, K)
+            y_pred = self.ysmooth(self.y, self.X, self.X, K)
             mse[i] = ((y_pred - self.y) ** 2).mean()
-
+            
         if (plot):
             import matplotlib.pyplot as plt
             plt.semilogx(gamma_values, mse, 'bd-')
@@ -128,7 +135,7 @@ class KernelRegression(BaseEstimator, RegressorMixin):
             plt.plot(gamma_values[np.nanargmin(mse)], mse[np.nanargmin(mse)], 'rs')
             plt.show()
         self.mse = np.nanmin(mse)
-
+            
         return gamma_values[np.nanargmin(mse)]
 
     def _optimize_gamma_pv(self, gamma_values, pary, parX, plot=False):
@@ -138,11 +145,11 @@ class KernelRegression(BaseEstimator, RegressorMixin):
         for i, gamma in enumerate(gamma_values):
             K = pairwise_kernels(self.X, parX, metric=self.kernel,
                                  gamma=gamma)
-            K = K - K.max(axis=0)[np.newaxis, :]  # only relative values along 0 axis matter
+            K = K - K.max(axis=0)[np.newaxis, :]  #only relative values along 0 axis matter
             np.exp(K, K)
-            y_pred = ysmooth(self.y, K)
+            y_pred = self.ysmooth(self.y, self.X, parX, K)
             mse[i] = ((y_pred - pary) ** 2).mean()
-
+            
         if (plot):
             import matplotlib.pyplot as plt
             plt.semilogx(gamma_values, mse, 'bd-')
@@ -150,11 +157,54 @@ class KernelRegression(BaseEstimator, RegressorMixin):
             plt.plot(gamma_values[np.nanargmin(mse)], mse[np.nanargmin(mse)], 'rs')
             plt.show()
         self.mse = np.nanmin(mse)
-
+            
         return gamma_values[np.nanargmin(mse)]
 
+    
+# def ysmooth(y, K):
+#     """Smooth y measured at old points onto new points as specified by kernel K[old,new]
+#     using Nadaraya-Watson"""
+#     return (K * y[:, np.newaxis]).sum(axis=0) / K.sum(axis=0)
 
-def ysmooth(y, K):
-    """Smooth y measured at old points onto new points as specified by kernel K[old,new]
-    using Nadaraya-Watson"""
-    return (K * y[:, np.newaxis]).sum(axis=0) / K.sum(axis=0)
+def ysmooth(y, Xold, Xnew, K):
+    """Smooth y measured at old points Xold onto new points Xnew
+    as specified by kernel K[old,new] using locally linear regression. Only works in 1-d"""
+    # return (K * y[:, np.newaxis]).sum(axis=0) / K.sum(axis=0)  #Nadaraya-Watson
+    # remember self.X, X are n_samples x n_dim
+    n = Xold.shape[0]
+    m = Xnew.shape[0]
+    d = Xold.shape[1]
+    p = d + 1
+    assert (y.shape==(n,))
+    assert (Xnew.shape[1]==d)
+    assert (K.shape==(n,m))
+    assert (y.shape[0]==Xold.shape[0])
+    # F matrix is design matrix (Wasserman and others call this X_x)
+    # three dimensions not two because it depends on Xnew point, that's the local part
+    deltax = Xold[np.newaxis,:,:] - Xnew[:,np.newaxis,:]  #x_i - X
+    F = np.zeros((m, n, p))
+    F[:,:,0] = 1.  # intercept term
+    F[:,:,1:] = deltax
+    WF = K.T[:, :, np.newaxis] * F
+    D = np.einsum('irj,irk->ijk', F, WF)  # this is the (X_x^T W_x X_x) matrix of Wasserman
+    invmat = np.linalg.inv(D)  # should work even with leading index
+    firstrow = invmat[:,0,:]
+    B = np.einsum('il,ijl->ij', firstrow, WF)
+    # B is now an m x n array
+    yfit = (B * y[np.newaxis,:]).sum(axis=1) / B.sum(axis=1)
+    return yfit
+
+def ysmooth_1d(y, Xold, Xnew, K):
+    """Smooth y measured at old points Xold onto new points Xnew
+    as specified by kernel K[old,new] using locally linear regression. Only works in 1-d"""
+    # return (K * y[:, np.newaxis]).sum(axis=0) / K.sum(axis=0)  # would be Nadaraya-Watson
+    # remember self.X, X are n_samples x n_dim
+    # this version for 1-d only
+    assert Xold.shape[1]==1
+    assert Xnew.shape[1]==1
+    deltax = Xold[:,0][:,np.newaxis] - Xnew[:,0][np.newaxis,:]  #x_i - X
+    s1 = (K * deltax).sum(axis=0)
+    s2 = (K * deltax**2).sum(axis=0)
+    B = K * (s2[np.newaxis,:] - deltax * s1[np.newaxis,:])
+    yfit = (B * y[:, np.newaxis]).sum(axis=0) / B.sum(axis=0)
+    return yfit

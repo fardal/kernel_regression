@@ -21,14 +21,18 @@ from sklearn.grid_search import GridSearchCV
 from sklearn.learning_curve import learning_curve
 import matplotlib.pyplot as plt
 
-from kernel_regression import KernelRegression
+# from kernel_regression import KernelRegression
+from adapt_kernel_regression import KernelRegression
 
 np.random.seed(0)
 
 
 ###############################################################################
 # Generate sample data
-X = np.sort(5 * np.random.rand(100, 1), axis=0)
+# X = np.sort(5 * np.random.rand(100, 1), axis=0)  #default
+X0 = np.sort(2 * np.random.rand(50, 1), axis=0)
+X1 = 3. + np.sort(2 * np.random.rand(50, 1), axis=0)
+X = np.concatenate((X0, X1))
 y = np.sin(X).ravel()
 
 ###############################################################################
@@ -40,13 +44,16 @@ y += 0.5 * (0.5 - np.random.rand(y.size))
 svr = GridSearchCV(SVR(kernel='rbf'), cv=5,
                    param_grid={"C": [1e-1, 1e0, 1e1, 1e2],
                                "gamma": np.logspace(-2, 2, 10)})
+
 kr = KernelRegression(kernel="rbf", gamma=np.logspace(-2, 2, 10))
+
 t0 = time.time()
 y_svr = svr.fit(X, y).predict(X)
 print("SVR complexity and bandwidth selected and model fitted in %.3f s" \
     % (time.time() - t0))
 t0 = time.time()
 y_kr = kr.fit(X, y).predict(X)
+print('gamma: ', kr.gamma)
 print("KR including bandwith fitted in %.3f s" \
     % (time.time() - t0))
 
@@ -60,23 +67,24 @@ plt.xlabel('data')
 plt.ylabel('target')
 plt.title('Kernel regression versus SVR')
 plt.legend()
+plt.show()
 
 # Visualize learning curves
-plt.figure()
-train_sizes, train_scores_svr, test_scores_svr = \
-    learning_curve(svr, X, y, train_sizes=np.linspace(0.1, 1, 10),
-                   scoring="mean_squared_error", cv=10)
-train_sizes_abs, train_scores_kr, test_scores_kr = \
-    learning_curve(kr, X, y, train_sizes=np.linspace(0.1, 1, 10),
-                   scoring="mean_squared_error", cv=10)
-plt.plot(train_sizes, test_scores_svr.mean(1), 'o-', color="r",
-         label="SVR")
-plt.plot(train_sizes, test_scores_kr.mean(1), 'o-', color="g",
-         label="Kernel Regression")
-plt.yscale("symlog", linthreshy=1e-7)
-plt.ylim(-10, -0.01)
-plt.xlabel("Training size")
-plt.ylabel("Mean Squared Error")
-plt.title('Learning curves')
-plt.legend(loc="best")
-plt.show()
+# plt.figure()
+# train_sizes, train_scores_svr, test_scores_svr = \
+#     learning_curve(svr, X, y, train_sizes=np.linspace(0.1, 1, 10),
+#                    scoring="mean_squared_error", cv=10)
+# train_sizes_abs, train_scores_kr, test_scores_kr = \
+#     learning_curve(kr, X, y, train_sizes=np.linspace(0.1, 1, 10),
+#                    scoring="mean_squared_error", cv=10)
+# plt.plot(train_sizes, test_scores_svr.mean(1), 'o-', color="r",
+#          label="SVR")
+# plt.plot(train_sizes, test_scores_kr.mean(1), 'o-', color="g",
+#          label="Kernel Regression")
+# plt.yscale("symlog", linthreshy=1e-7)
+# plt.ylim(-10, -0.01)
+# plt.xlabel("Training size")
+# plt.ylabel("Mean Squared Error")
+# plt.title('Learning curves')
+# plt.legend(loc="best")
+# plt.show()
